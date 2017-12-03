@@ -1,0 +1,152 @@
+---
+title: "Lending Club Data"
+author: "Siran Zhao"
+date: "December 3, 2017"
+output: pdf_document
+---
+##OVERVIEW
+As more and more peoples like to lend money from lending club. Under this circumstance, I think if we can predict the probability that whether a person are going to charge off his(her) loans, then we can control the risk we are going to face.
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = F,fig.align = "center")
+library(tidyverse)
+library(dplyr)
+library(ggplot2)
+library(lme4)
+library(varhandle)
+library(arm)
+library(knitr)
+
+```
+## Data Cleaning
+```{r}
+setwd("E:/BU/MA 684/MID TERM PROJECT")
+loan <- read.csv("LoanStats3a_NO INSTRUCTION_.csv",header = T)
+loan <- loan[,-1:-2]
+loan.data <- dplyr::select(loan,loan_amnt,funded_amnt,term,int_rate,grade,sub_grade,home_ownership,annual_inc,loan_status,addr_state)
+loan.data <- na.omit(loan.data)
+
+loan.data$loan_amnt <- as.numeric(loan.data$loan_amnt)
+loan.data$funded_amnt <- as.numeric(loan.data$funded_amnt)
+loan.data$term <- as.factor(loan.data$term)
+loan.data$int_rate <- as.numeric(sub("%","",loan.data$int_rate))
+loan.data$grade <- as.factor(loan.data$grade)
+loan.data$sub_grade <- as.factor(loan.data$sub_grade)
+loan.data$home_ownership <- as.factor(loan.data$home_ownership)
+loan.data$annual_inc <- as.numeric(loan.data$annual_inc)
+loan.data$loan_status <- as.factor(loan.data$loan_status)
+loan.data$addr_state <- as.factor(loan.data$addr_state)
+
+loan.data$int_rate <- (loan.data$int_rate - mean(loan.data$int_rate))/sd(loan.data$int_rate)
+
+
+```
+
+## potion Graph between Loan_term and loan_status
+
+```{r}
+meet.policy <- filter(loan.data, loan_status == "Fully Paid" | loan_status == "Charged Off")
+paid <- filter(meet.policy,loan_status == "Fully Paid")
+charge.off <- filter(meet.policy, loan_status == "Charged Off")
+ggplot(meet.policy,aes(term,fill = loan_status,label = loan_status))+geom_bar(position = "fill",width = 0.3)
+
+#did_not.meet <- filter(loan.data,loan.data$loan_status == "Does not meet the credit policy. Status:Fully Paid" | loan.data$loan_status == "Does not meet the credit policy. Status:Charged Off")
+
+#did_not.meet$loan_status<-ifelse(did_not.meet$loan_status == "Does not meet the credit policy. Status:Fully Paid","Fully Paid","Charged Off")
+#ggplot(did_not.meet,aes(term,fill = loan_status, label = loan_status))+geom_bar(position = "fill",width = 0.3)
+
+##loan.data <- as.data.frame(loan$loan_amnt,loan$funded_amnt,as.factor(loan$term),loan$int_rate,as.factor(loan$grade),as.factor(loan$sub_grade),as.factor(loan$home_ownership),loan$annual_inc,as.factor(loan$loan_status),as.factor(loan$addr_state))
+
+```
+36 months ratio of charged off is lower than 72 months. So there must be some connection between terms and results.
+## potion graph between home_ownership and loan_status
+```{r}
+ggplot(meet.policy,aes(home_ownership,fill = loan_status,label = loan_status))+geom_bar(position = "fill")
+
+
+#ggplot(did_not.meet,aes(home_ownership,fill = loan_status, label = loan_status))+geom_bar(position = "fill")
+
+
+```
+From the graph above, we can find slightly difference in charge off rate among different kinds of ownership.
+## Ratio of Charged off and fully paid loan among Loan Grade.
+```{r}
+ggplot(meet.policy,aes(grade,fill = loan_status))+geom_bar(position = "fill")
+```
+From this graph, we can find that as the Grade of the loans went down, the ratio of charged off became higher. So I think we can fit the models with the elements above.
+
+## Fitting Models
+At first we tried to fit a model only with term of loans in different grade levels. Then we added two more into the model to see whether it can make my models more accurate.
+```{r}
+meet.policy$pay.or.not <- ifelse(meet.policy$loan_status == "Fully Paid", "1", "0")
+meet.policy$pay.or.not <- as.factor(meet.policy$pay.or.not)
+set.seed(555)
+sample.loan.data <- sample_n(meet.policy,10000,replace = F)
+
+pay.or.chargr1 <- glmer(pay.or.not~ term+ (1 | grade),data = sample.loan.data, family = binomial(link = "logit"))
+
+pay.or.chargr2 <- glmer(pay.or.not~ term+ home_ownership + (1 | grade),data = sample.loan.data, family = binomial(link = "logit"))
+
+pay.or.chargr3 <- glmer(pay.or.not~ int_rate+term+ home_ownership + (1 | grade)-1,data = sample.loan.data, family = binomial(link = "logit"))
+
+summary1 <- summary(pay.or.chargr1)
+summary2 <- summary(pay.or.chargr2)
+summary3 <- summary(pay.or.chargr3)
+
+```
+##AIC Compairision
+```{r}
+summary1$AICtab
+summary2$AICtab
+summary3$AICtab
+
+
+```
+From the AIC Score above, we can find that as we added home_ownership and annual interest of the loan into the fitting models, the AIC Score went down. This meant the model fit better with this two elements.
+
+```{r}
+summary1
+summary2
+summary3
+```
+From above summaries, 
+1,Interest rate have negative influence on Fully paid probability.
+2,As last-time of loans grew longer, it have weaker positive influence on Fully paid probability.
+3.Basis of home_ownership is MORTGAGE, and we can find who have a Other or Rent contracts of the houses are more likely to Charge off.
+
+## Predict the probability of Fully Paid and Charged off among 9227 customers' loan whose status under Current.
+After finishing the models, I tried to predict loan status within 2017Q2 data in which status are still pending.
+```{r}
+## Predict the probability of Fully Paid and Charged off among 9227 customers' loan whose status under Current.
+loan2017 <- read.csv("LoanStats_2017Q2.csv")
+loan2017 <- loan2017[1:10000,-1:-2]
+loan2017.data <- dplyr::select(loan2017,loan_amnt,funded_amnt,term,int_rate,grade,sub_grade,home_ownership,annual_inc,loan_status,addr_state)
+loan2017.data <- na.omit(loan2017.data)
+
+
+
+loan2017.data$loan_amnt <- as.numeric(loan2017.data$loan_amnt)
+loan2017.data$funded_amnt <- as.numeric(loan2017.data$funded_amnt)
+loan2017.data$term <- as.factor(loan2017.data$term)
+loan2017.data$int_rate <- as.numeric(sub("%","",loan2017.data$int_rate))
+loan2017.data$grade <- as.factor(loan2017.data$grade)
+loan2017.data$sub_grade <- as.factor(loan2017.data$sub_grade)
+loan2017.data$home_ownership <- as.factor(loan2017.data$home_ownership)
+loan2017.data$annual_inc <- as.numeric(loan2017.data$annual_inc)
+loan2017.data$loan_status <- as.factor(loan2017.data$loan_status)
+loan2017.data$addr_state <- as.factor(loan2017.data$addr_state)
+
+loan2017.data$int_rate <- (loan2017.data$int_rate - mean(loan.data$int_rate))/sd(loan2017.data$int_rate)
+
+loan2017.data <- filter(loan2017.data,loan_status == "Current")
+loan2017.data <- loan2017.data[-3517,]
+
+loan2017.data$prob <- predict(pay.or.chargr3, newdata = loan2017.data, type = "response", na.action = na.omit)
+
+loan2017.data$pre.status <- ifelse(loan2017.data$prob <= "0.5","Will Charge off" , "Will Fully Paid")
+
+pred.charge <- filter(loan2017.data,pre.status == "Will Charge off")
+summary(pred.charge)
+
+#predict.pa <- invlogit(coef.pay.charged$int_rate[1,]+coef.pay.charged$`term 36 months`[1,]*loan2017.a36.mor$term+ loan2017.a36.mor$home_ownership + )
+```
+I filtered the people who are likely to charge off in the future with Probability larger than 50%. And count the number are 612. We should be aware of these peoples.
