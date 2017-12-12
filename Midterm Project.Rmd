@@ -5,7 +5,16 @@ date: "December 3, 2017"
 output: pdf_document
 ---
 ##OVERVIEW
-As more and more peoples like to lend money from lending club. Under this circumstance, I think if we can predict the probability that whether a person are going to charge off his(her) loans, then we can control the risk we are going to face.
+As more and more people like to borrow money from lending club. Under this circumstance, I think if we can predict the probability that whether a person is going to charge off his(her) loans, then we can control the risk we are going to face.\par
+So I got the data from the website of Lending Club from 2007 to 2011 to fit a multilevel logistic model and try to predict 2017Q2 results with 2017Q2 filted data.\par
+Variable Description:\newline
+loan_amnt:\ The amount of money who borrowed.\newline
+term:\ 2 terms of loans "36 months" and "60 months", which mean the last period of a loan.\newline
+int_rate:\ Interest rate of a loan.\newline
+grade:\ Grade of a loan.\newline
+home_ownership:\ House ownership of the borrowers.\newline
+loan_status:\ Loan_status means whether a loan had been charged off or fully paid.\newline
+pay or not:\ binary form of loan_status in which 1 means fully paid, 0 means charged off.
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = F,fig.align = "center")
 library(tidyverse)
@@ -15,11 +24,23 @@ library(lme4)
 library(varhandle)
 library(arm)
 library(knitr)
+library(gridExtra)
+library(corrplot)
+library(knitr)
 
 ```
 
-## Data Cleaning
-I select 10 columns from the original data set, then assign their format in order to fit the models. Because the scale of intterest rate is not appropriate, so I centralized them.
+## Data Cleaning and Models
+At first I assigned their format in order to fit the models. Because the scale of interest rate is not appropriate, so I centralized them.\par
+Then I picked up 3 variables to fit the model which I think have the most relation to my topic. I picked loan_status as the Y, because it contain 2 form of output,"Fully Paid" and "Charged off", which can be treat as binomial "1: Fully paid", "0: Charged Off". Then I fitted three models each of them I would add a new kind of variable in it.\par
+The 1st model: $y = \beta_0 + \beta_1*x_1 + \varepsilon$\par
+2nd model: $y = \beta_0 + \beta_1*x_1 + \beta_2 * x_2 + \varepsilon$\par
+3rd model: $y = \beta_0 + \beta_1*x_1 + \beta_2 * x_2 + \beta_3 * x_3 + \varepsilon$\par
+($x_1 = Term\ ofloans$
+$x_2 = Home\ ownership$
+$x_3 = Interest\ Rate$)\par
+The models are fitted upon groups of loans grade, which from A~G as A is the best and G is the worst.
+
 ```{r}
 loan <- read.csv("LoanStats3a_NO INSTRUCTION_.csv",header = T)
 loan <- loan[,-1:-2]
@@ -39,16 +60,32 @@ loan.data$addr_state <- as.factor(loan.data$addr_state)
 
 loan.data$int_rate <- (loan.data$int_rate - mean(loan.data$int_rate))/sd(loan.data$int_rate)
 
-
-```
-
-## potion Graph between Loan_term and loan_status
-
-```{r}
 meet.policy <- filter(loan.data, loan_status == "Fully Paid" | loan_status == "Charged Off")
 paid <- filter(meet.policy,loan_status == "Fully Paid")
 charge.off <- filter(meet.policy, loan_status == "Charged Off")
-ggplot(meet.policy,aes(term,fill = loan_status,label = loan_status))+geom_bar(position = "fill",width = 0.3)
+
+```
+
+
+
+##Histgram distribution of loan_amnt and loan_status
+Through this plot we can define the relation between loan amount and loan status, we can see whether their distribution are similar.
+```{r}
+
+ggplot(meet.policy,aes(loan_amnt,fill = loan_status,label=loan_status))+geom_histogram(position = "identity",alpha = 0.6,binwidth = 1000)
+
+
+```
+From the plot above, we can easily find that whether the loan amounts are high or low, the distribution of people who charged off(the dark part) are not influenced a lot. So I think we can neglect the influence which loan amount gave on the loan status. 
+
+
+## potion Graph between Loan_term and loan_status
+At first I plot the graph between loan status and loan terms.
+```{r}
+
+ggplot(meet.policy,aes(term,fill = loan_status,label = loan_status))+geom_bar(position = "fill",width = 0.3)+labs(y = "Portion")
+
+#ggplot(meet.policy,aes(term,fill = loan_status,label = loan_status))+geom_density(alpha=0.3)
 
 #did_not.meet <- filter(loan.data,loan.data$loan_status == "Does not meet the credit policy. Status:Fully Paid" | loan.data$loan_status == "Does not meet the credit policy. Status:Charged Off")
 
@@ -58,26 +95,28 @@ ggplot(meet.policy,aes(term,fill = loan_status,label = loan_status))+geom_bar(po
 ##loan.data <- as.data.frame(loan$loan_amnt,loan$funded_amnt,as.factor(loan$term),loan$int_rate,as.factor(loan$grade),as.factor(loan$sub_grade),as.factor(loan$home_ownership),loan$annual_inc,as.factor(loan$loan_status),as.factor(loan$addr_state))
 
 ```
-36 months ratio of charged off is lower than 72 months. So there must be some connection between terms and results.
+From the plot above 36 months ratio for charged off is lower than 72 months. People may have higher probability to charge off their loans as the loans period get longer. So there must be some connection between terms and results.
 
 
 ## potion graph between home_ownership and loan_status
 ```{r}
-ggplot(meet.policy,aes(home_ownership,fill = loan_status,label = loan_status))+geom_bar(position = "fill")
-
+ggplot(meet.policy,aes(home_ownership,fill = loan_status,label = loan_status))+geom_bar(position = "fill")+labs(y = "Portion")
 
 #ggplot(did_not.meet,aes(home_ownership,fill = loan_status, label = loan_status))+geom_bar(position = "fill")
 
 
 ```
-From the graph above, we can find slightly difference in charge off rate among different kinds of ownership.
+From the graph above, we can find slightly difference in charge off rate among different kinds of ownership. People who have mortgage kind of house with the smallest rate to charge off their loans, and the other kind and people who rent their house will have higher rate to charge off their loans as people who own their houses are between these three kinds above.\par
+According to the reality, we think people who have their own house or have mortgages would have less possible to charge off their loans compairing with people who rent their house.(Number of people who in NONE kind is just one, so I didn't made any conclusion.)
 
 
 ## Ratio of Charged off and fully paid loan among Loan Grade.
 ```{r}
-ggplot(meet.policy,aes(grade,fill = loan_status))+geom_bar(position = "fill")
+ggplot(meet.policy,aes(grade,fill = loan_status))+geom_bar(position = "fill")+labs(y = "Portion")
 ```
 From this graph, we can find that as the Grade of the loans went down, the ratio of charged off became higher. So I think we can fit the models with the elements above.
+
+
 
 ## Fitting Models
 At first we tried to fit a model only with term of loans in different grade levels. Then we added two more into the model to see whether it can make my models more accurate.
@@ -87,9 +126,9 @@ meet.policy$pay.or.not <- as.factor(meet.policy$pay.or.not)
 set.seed(555)
 sample.loan.data <- sample_n(meet.policy,10000,replace = F)
 
-pay.or.chargr1 <- glmer(pay.or.not~ term+ (1 | grade),data = sample.loan.data, family = binomial(link = "logit"))
+pay.or.chargr1 <- glmer(pay.or.not~ term+ (1 | grade)-1,data = sample.loan.data, family = binomial(link = "logit"))
 
-pay.or.chargr2 <- glmer(pay.or.not~ term+ home_ownership + (1 | grade),data = sample.loan.data, family = binomial(link = "logit"))
+pay.or.chargr2 <- glmer(pay.or.not~ term+ home_ownership + (1 | grade)-1,data = sample.loan.data, family = binomial(link = "logit"))
 
 pay.or.chargr3 <- glmer(pay.or.not~ int_rate+term+ home_ownership + (1 | grade)-1,data = sample.loan.data, family = binomial(link = "logit"))
 
@@ -98,6 +137,20 @@ summary2 <- summary(pay.or.chargr2)
 summary3 <- summary(pay.or.chargr3)
 
 ```
+
+
+##Summaries for 3 models.
+```{r}
+summary1$coefficients
+summary2$coefficients
+summary3$coefficients
+```
+From above summaries, we can find that:\par 
+1.\ Interest rate have negative influence on Fully paid probability. Which means that if the interest of loans goes higher, borrower are more likely to charge off their loans.\ (1 unit of interest rate's improvement will decline 0.4 units of log odds)\par
+2.\ As loans period are longer, it have weaker positive influence on Fully paid probability means that a person who take longer loans will have more probability to charge off their loans than people who had shorter time loans.\ (When period from 36 months become 60 months, it will have 0.5 reduce effect on log odds.)\par
+3.\ Basis of home_ownership is MORTGAGE, and we can find who have a Other or Rent contracts of the houses are more likely to Charge off.\ (Other kinds have -1.0 negative influence on log odds comparing with mortgage kind, kinds of own have -0.06 influence than mortgage kind on log odds and rent kind have -0.16 influence on log odds than mortgage kind.)\par
+4.\ From the coefficients of above 3 models, at first I fitted the term of loans into the model_1, then I added home_ownership into the model, and we can find that the P-value of former coefficient became smaller base on the home ownership. At last, I fitted centralized interest_rate into the model, which reduce the P-value of former coefficients again.
+
 ##AIC Compairision
 ```{r}
 summary1$AICtab
@@ -106,23 +159,33 @@ summary3$AICtab
 
 
 ```
-From the AIC Score above, we can find that as we added home_ownership and annual interest of the loan into the fitting models, the AIC Score went down. This meant the model fit better with this two elements.
+From the AIC Score above, we can find that as we added home_ownership and annual interest of the loan into the fitting models, the AIC Score went down. This meant the model fit better with this 3 indicators than just one of them.
 
-##Summaries for 3 models.
+##Residual Plot
 ```{r}
-summary1
-summary2
-summary3
+resplot1 <- ggplot(sample.loan.data,aes(x=fitted.values(pay.or.chargr3),y=residuals(pay.or.chargr1)))+geom_point()+geom_abline()+labs(title = "Model 1",x="Fitted Value",y="Residuals")
+
+resplot2 <- ggplot(sample.loan.data,aes(x=fitted.values(pay.or.chargr3),y=residuals(pay.or.chargr2)))+geom_point()+geom_abline()+labs(title = "Model 2",x="Fitted Value",y="Residuals")
+
+resplot3 <- ggplot(sample.loan.data,aes(x=fitted.values(pay.or.chargr3),y=residuals(pay.or.chargr3)))+geom_point()+geom_abline()+labs(title = "Model 3",x="Fitted Value",y="Residuals")
+
+grid.arrange(resplot1,resplot2,resplot3,ncol=2)
+
+
 ```
-From above summaries, 
-1,Interest rate have negative influence on Fully paid probability.
-2,As last-time of loans grew longer, it have weaker positive influence on Fully paid probability.
-3.Basis of home_ownership is MORTGAGE, and we can find who have a Other or Rent contracts of the houses are more likely to Charge off.
+To compare the models we had in another way, I drew the residual plots for these 3 models.\par
+From three residuals plots, we can find the residuals in the first plot which present model 1 which just contain terms of loans are much scatter than the second and the third plots, while the residuals of model 2 are more scatter than model 3. I think they showed that as I added interest rate of loans and the home ownership into models, it help optimize my models.
 
-## Predict the probability of Fully Paid and Charged off among 9227 customers' loan whose status under Current.
-After finishing the models, I tried to predict loan status within 10000 data from 2017 Quarter 2 in which customers' status are still pending.
+##Binned residual plot
+Use binned plot we can also justify the model fitting.
 ```{r}
+binnedplot(x = fitted.values(pay.or.chargr3,type = "response"),y = resid(pay.or.chargr3,type = "response"))
+```
+In the binned residuals plot, most of the points lying between two lines and concentrate  around the x = 0 line. This means that our model is reliable.
 
+
+##Predict the probability of Fully Paid and Charged off among customers' loan whose status under Fully paid and Charged off in 2017 Q2.
+```{r}
 loan2017 <- read.csv("LoanStats_2017Q2.csv")
 loan2017 <- loan2017[1:10000,-1:-2]
 loan2017.data <- dplyr::select(loan2017,loan_amnt,funded_amnt,term,int_rate,grade,sub_grade,home_ownership,annual_inc,loan_status,addr_state)
@@ -143,21 +206,94 @@ loan2017.data$addr_state <- as.factor(loan2017.data$addr_state)
 
 loan2017.data$int_rate <- (loan2017.data$int_rate - mean(loan.data$int_rate))/sd(loan2017.data$int_rate)
 
+loan2017.data.cc <- filter(loan2017.data,loan_status == "Fully Paid" | loan_status == "Charged Off")
+loan2017.data.cc$prob <- predict(pay.or.chargr3, newdata = loan2017.data.cc, type = "response", na.action = na.omit)
+loan2017.data.cc$same <- ifelse(loan2017.data.cc$loan_status == "Fully Paid" & loan2017.data.cc$prob >= 0.5,1,0)
+
+sum(loan2017.data.cc$same)/nrow(loan2017.data.cc)
+
+```
+The 0.88 is the ratio of the predicted results which are "Fully Paid" the same as the  reality. Though it is lower than 90%, but in my opinion this maybe because that the sample size of real data is too small to make a more accurately predict.
+
+
+## Predict the probability of Fully Paid and Charged off among 9227 customers' loan whose status under Current.
+After finishing the models, I tried to predict loan status within 10000 data from 2017 Quarter 2 in which customers' status are still pending.
+```{r}
+
+
 loan2017.data <- filter(loan2017.data,loan_status == "Current")
 loan2017.data <- loan2017.data[-3517,]
 
 loan2017.data$prob <- predict(pay.or.chargr3, newdata = loan2017.data, type = "response", na.action = na.omit)
 
-loan2017.data$pre.status <- ifelse(loan2017.data$prob <= "0.5","Will Charge off" , "Will Fully Paid")
+loan2017.data$pre.status <- ifelse(loan2017.data$prob < "0.5","Will Charge off" , "Will Fully Paid")
 
 pred.charge <- filter(loan2017.data,pre.status == "Will Charge off")
 summary(pred.charge)
 
 
 ```
+From the summary above, we can find several conclusions:\newline
+1.\ For those who have more probability to charge off their loans, 60 months' loan take larger portion.\newline
+2.\ The least probability for a borrower to paid his loan is 0.257,and the mean is 0.41.
+
 I filtered the people who are likely to charge off in the future with Probability larger than 50%. And count the number are 612. We should be aware of these peoples.
 
 ```{r}
 write.csv(pred.charge,file = "Predicted Charge off.csv")
+write.csv(loan2017.data.cc, file = "Predicted result compair with reality.csv")
+```
+
+##What can we do with this prediction?
+From the prediction we can get probability for each borrower. Then we can assigh levels for these borrowers base on their probability for paying their loans or charging off their loans.\par
+And we can assign 4 levels as below:\newline
+1.\ 0.00~0.20\ ~\ 1st level:\ Need to be checked each month.\newline
+2.\ 0.20~0.50\ ~\ 2nd level: Need to be checked each quarter.\newline
+3.\ 0.50~0.80\ ~\ 3rd level: Checking each year.\newline
+4.\ 0.80~1.00\ ~\ 4th level: Randomly checked.\par
+Which from level 1 to level 4 represent the risk we are facing become lower.
+```{r}
+pred.charge2 <- loan2017.data
+pred.charge2$prob <- ifelse(pred.charge2$prob <= "0.2","1st level: Need to be checked each month",ifelse(pred.charge2$prob <= "0.5","2nd level: Need to be checked each quarter",ifelse(pred.charge2$prob <= "0.8","3rd level: Checking each year","4th level: Randomly checked")))
+
+kable(head(pred.charge2 %>%
+       dplyr::select(term,int_rate,grade,home_ownership,prob,pre.status)))
+```
+
+
+##Shortcoming and Future development
+1st:\ Is that to make more accurate predictions, we need to have more data in the future.\par
+2nd:\ I should lift the 50% rate to a higher place if I can fit a better model, because in real world, a higher than 50% of probability who will pay their loans is not reliable enough.\par
+
+##Appendix
+###1 Summaries of 3 models I fitted.
+1st model with just terms of loans.
+```{r}
+print(pay.or.chargr1)
+```
+
+2nd model with terms and home ownership
+```{r}
+print(pay.or.chargr2)
+```
+
+3rd model with term, home ownership and interest rate of loans
+```{r}
+print(pay.or.chargr3)
+```
+
+###2 Prediction of 2017 Q2 data which are under fully paid and charged offf status:
+```{r}
+kable(head(loan2017.data.cc %>%
+  dplyr::select(term,int_rate,grade,home_ownership,loan_status,prob,same)))
+```
+
+
+
+###3 Prediction of 2017 Q2 data which are under current status:
+```{r}
+kable(head(pred.charge %>%
+  dplyr::select(term,int_rate,grade,home_ownership,loan_status,prob,pre.status)))
+
 ```
 
